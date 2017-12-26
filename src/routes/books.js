@@ -3,13 +3,26 @@ import request from 'request-promise';
 import { parseString } from 'xml2js';
 
 import authenticate from '../middlewares/authenticate';
+import Book from '../models/Book';
+import parseErrors from '../utils/parseErrors';
 
 const router = express.Router();
 router.use(authenticate);
 
+router.get('/', (req, res) => {
+  Book.find({ userId: req.currentUser._id })
+    .then(books => res.json({ books }));
+});
+
+router.post('/', (req, res) => {
+  Book.create({ ...req.body.book, userId: req.currentUser._id })
+    .then(book => res.json({ book }))
+    .catch(err => res.status(400).json({ errors: parseErrors(err.errors) }));
+});
+
 router.get('/search', (req, res) => {
 
-  request.get(`https://www.goodreads.com/search/index.xml?key=p69OrRMMYSw6go8otXnaAw&q=${req.query.q}`)
+  request.get(`https://www.goodreads.com/search/index.xml?key=${process.env.GOODREADS_KEY}&q=${req.query.q}`)
     .then(result => 
       parseString(result, (err, goodreadsResult) => {
         if(!!err) {
@@ -27,31 +40,23 @@ router.get('/search', (req, res) => {
       }
       )
     );
+});
 
-  // res.json({
-  //   books: [
-  //     {
-  //       goodreadsId: 1,
-  //       title: '1984',
-  //       authors: 'Orwell',
-  //       covers: [
-  //         'http://flavorwire.files.wordpress.com/2011/06/georgeorwellxobeygiantprintset-1984coverbyshepardfairey.jpeg ',
-  //         'https://flavorwire.files.wordpress.com/2011/06/screen-shot-2011-06-25-at-8-13-27-am.jpg'
-  //       ],
-  //       pages: 198
-  //     },
-  //     {
-  //       goodreadsId: 2,
-  //       title: 'Tree Men in a Boat',
-  //       authors: 'Jerome K. Jerome',
-  //       covers: [
-  //         'https://img1.od-cdn.com/ImageType-100/2389-1/%7B03B5CE87-A1A1-45E6-B0DC-282B1B2750B0%7DImg100.jpg',
-  //         'https://pictures.abebooks.com/isbn/9780141305585-uk-300.jpg'
-  //       ],
-  //       pages: 256
-  //     }
-  //   ]
-  // });
+router.get('/fetchPages', (req, res) => {
+  const goodreadsId = req.query.goodreadsId;
+  request.get(`https://www.goodreads.com/book/show.xml?key=
+    ${process.env.GOODREADS_KEY}&id=${goodreadsId}`)
+    .then(result => 
+      parseString(result, (err, goodreadsResult) => {
+        if(!!err) {
+
+        } else {
+            const numPages = goodreadsResult.GoodreadsResponse.book[0].num_pages[0];
+            const pages = numPages ? parseInt(numPages, 10) : 0;
+            return res.json({ pages })
+          }
+      })
+    );
 });
 
 export default router;
